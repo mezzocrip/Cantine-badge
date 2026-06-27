@@ -3,281 +3,321 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner Automatique de Badges - Collège Jules Ferry</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <title>Extracteur de Classes - Collège Jules Ferry</title>
+    <!-- Inclusion de PDF.js pour lire n'importe quel fichier PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
+        :root {
+            --primary: #2b6cb0;
+            --primary-hover: #2c5282;
+            --bg: #f7fafc;
+            --card-bg: #ffffff;
+            --text: #2d3748;
+            --border: #e2e8f0;
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f4f7f6;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
             margin: 0;
+            padding: 20px;
         }
-        .search-container {
-            background-color: #ffffff;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            width: 450px;
-            position: relative;
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
         }
-        h2 {
-            margin-top: 0;
-            color: #333;
-            font-size: 20px;
+
+        header {
             text-align: center;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
         }
-        .file-section {
-            background-color: #f9f9f9;
-            border: 2px dashed #bbb;
-            padding: 15px;
+
+        h1 {
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+
+        /* Zone de dépôt du fichier */
+        .upload-zone {
+            background: var(--card-bg);
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 40px 20px;
             text-align: center;
-            border-radius: 6px;
-            margin-bottom: 20px;
-        }
-        .status {
-            font-size: 13px;
-            margin-top: 8px;
-            color: #666;
-            font-weight: bold;
-        }
-        label {
-            font-size: 14px;
-            color: #666;
-            font-weight: 600;
-        }
-        .input-wrapper {
-            position: relative;
-            margin-top: 5px;
-        }
-        input[type="text"] {
-            width: 100%;
-            padding: 12px;
-            box-sizing: border-box;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.3s;
-        }
-        input[type="text"]:focus {
-            border-color: #4a90e2;
-        }
-        input[type="text"]:disabled {
-            background-color: #eee;
-            cursor: not-allowed;
-        }
-        .suggestions {
-            border: 1px solid #ddd;
-            border-top: none;
-            border-radius: 0 0 6px 6px;
-            max-height: 180px;
-            overflow-y: auto;
-            position: absolute;
-            width: 100%;
-            background: #fff;
-            z-index: 1000;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            box-sizing: border-box;
-        }
-        .suggestions div {
-            padding: 12px;
             cursor: pointer;
-            font-size: 15px;
+            transition: all 0.3s ease;
+            margin-bottom: 30px;
         }
-        .suggestions div:hover {
-            background-color: #f0f4f8;
-            color: #4a90e2;
+
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--primary);
+            background: #ebf8ff;
         }
-        .result-box {
-            margin-top: 25px;
-            padding: 15px;
-            background-color: #eef5fc;
-            border-left: 5px solid #4a90e2;
-            border-radius: 4px;
+
+        .upload-zone input[type="file"] {
             display: none;
         }
-        .result-box p {
-            margin: 5px 0;
-            color: #333;
-            font-size: 15px;
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
         }
-        .badge-number {
+
+        /* Status de chargement */
+        #status {
+            text-align: center;
             font-weight: bold;
-            font-size: 20px;
-            color: #d9534f;
-            background-color: #fde8e8;
-            padding: 2px 8px;
-            border-radius: 4px;
+            margin-bottom: 20px;
+            color: var(--primary);
         }
-        .no-badge {
-            font-style: italic;
-            color: #777;
+
+        /* Affichage des classes */
+        .classe-block {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 20px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .classe-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .classe-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 0;
+            color: var(--primary);
+        }
+
+        .btn-copy {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .btn-copy:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .eleve-liste {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .eleve-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #edf2f7;
+            font-family: monospace;
+            font-size: 14px;
+        }
+
+        .eleve-item:last-child {
+            border-bottom: none;
         }
     </style>
 </head>
 <body>
 
-<div class="search-container">
-    <h2>Recherche Globale de Badges</h2>
-    
-    <div class="file-section">
-        <label for="pdf-file" style="cursor: pointer; color: #4a90e2;">📁 Charger le fichier Cantine 05:2026.pdf</label>
-        <input type="file" id="pdf-file" accept=".pdf" style="display: none;"><br>
-        <div id="import-status" class="status">Statut : En attente du fichier PDF...</div>
+<div class="container">
+    <header>
+        <h1>📋 Extracteur de Listes d'Élèves</h1>
+        <p>Glisse n'importe quel PDF de classe pour extraire instantanément les données au format requis.</p>
+    </header>
+
+    <!-- ZONE DE TELECHARGEMENT FLEXIBLE -->
+    <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <div class="upload-icon">📂</div>
+        <p><strong>Cliquez pour choisir un PDF</strong> ou glissez-déposez le fichier ici</p>
+        <span id="file-name-display" style="color: var(--primary); font-weight: bold;"></span>
+        <input type="file" id="file-input" accept=".pdf">
     </div>
 
-    <label for="student-search">Nom de l'élève (Toutes classes) :</label>
-    <div class="input-wrapper">
-        <input type="text" id="student-search" placeholder="Importez d'abord le PDF..." disabled autocomplete="off">
-        <div id="suggestions-list" class="suggestions" style="display: none;"></div>
-    </div>
-
-    <div id="result" class="result-box">
-        <p><strong>Élève :</strong> <span id="res-name"></span></p>
-        <p><strong>Classe :</strong> <span id="res-class"></span></p>
-        <p><strong>N° de Badge :</strong> <span id="res-badge" class="badge-number"></span></p>
-    </div>
+    <div id="status"></div>
+    <div id="output"></div>
 </div>
 
 <script>
-    // Configuration de la bibliothèque PDF.js
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    // Configuration de PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
-    let globalStudentsData = [];
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const statusDiv = document.getElementById('status');
+    const outputDiv = document.getElementById('output');
 
-    const fileInput = document.getElementById('pdf-file');
-    const importStatus = document.getElementById('import-status');
-    const searchInput = document.getElementById('student-search');
-    const suggestionsList = document.getElementById('suggestions-list');
-    const resultBox = document.getElementById('result');
-    const resName = document.getElementById('res-name');
-    const resClass = document.getElementById('res-class');
-    const resBadge = document.getElementById('res-badge');
-
-    // Détection de l'importation du fichier
-    fileInput.addEventListener('change', async function(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        importStatus.textContent = "⏳ Lecture et extraction des 24 pages en cours...";
-        importStatus.style.color = "#4a90e2";
-        globalStudentsData = []; // Réinitialisation
-
-        const fileReader = new FileReader();
-        fileReader.onload = async function() {
-            try {
-                const typedarray = new Uint8Array(this.result);
-                const pdf = await pdfjsLib.getDocument(typedarray).promise;
-                
-                // Parcourt les 24 pages du PDF
-                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-                    const page = await pdf.getPage(pageNum);
-                    const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(" ");
-                    
-                    // Analyse le texte ligne par ligne pour extraire les données
-                    analyzePageText(pageText);
-                }
-
-                if (globalStudentsData.length > 0) {
-                    importStatus.textContent = `✅ ${globalStudentsData.length} élèves chargés avec succès !`;
-                    importStatus.style.color = "#2ecc71";
-                    searchInput.disabled = false;
-                    searchInput.placeholder = "Tapez un nom pour chercher...";
-                } else {
-                    importStatus.textContent = "❌ Aucune donnée trouvée. Vérifiez le fichier.";
-                    importStatus.style.color = "#e74c3c";
-                }
-
-            } catch (error) {
-                console.error(error);
-                importStatus.textContent = "❌ Erreur lors de la lecture du fichier PDF.";
-                importStatus.style.color = "#e74c3c";
-            }
-        };
-        fileReader.readAsArrayBuffer(file);
+    // Gestion du Drag & Drop
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); }, false);
+    });
+    ['dragleavel', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); }, false);
     });
 
-    // Fonction intelligente d'extraction de données textuelles
-    function analyzePageText(text) {
-        // Recherche des motifs de lignes de type CSV / Tableau présents dans le document
-        // Capture le Nom de l'élève, le badge éventuel, et la classe (ex: 3A, 4B, 6F)
-        const regexLine = /"([^"\n]+)"\s*,\s*"?([0-9]*)"?\s*,\s*"([3456] ?[A-F]|UP2A)/gi;
-        let match;
-        
-        while ((match = regexLine.exec(text)) !== null) {
-            let name = match[1].replace(/\n/g, ' ').trim().toUpperCase();
-            let badge = match[2].trim() || null;
-            let className = match[3].replace(/\s/g, '').toUpperCase();
+    dropZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files.length) TraiterFichier(files[0]);
+    });
 
-            // Éviter les lignes d'en-tête de colonnes
-            if (name !== "NOM" && !name.includes("TOTAL") && !name.includes("COMPTES POUR LA CLASSE")) {
-                globalStudentsData.push({
-                    name: name,
-                    badge: badge,
-                    class: className
-                });
-            }
-        }
-    }
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length) TraiterFichier(e.target.files[0]);
+    });
 
-    // Gestion active de la barre de recherche
-    searchInput.addEventListener('input', function() {
-        const query = this.value.toUpperCase().trim();
-        suggestionsList.innerHTML = '';
-        
-        if (query.length === 0) {
-            suggestionsList.style.display = 'none';
+    // Fonction principale de lecture du PDF
+    function TraiterFichier(file) {
+        if (file.type !== "application/pdf") {
+            statusDiv.innerHTML = "❌ Erreur : Veuillez sélectionner un fichier au format PDF.";
             return;
         }
 
-        // Filtre instantané sur l'intégralité des élèves extraits
-        const filtered = globalStudentsData.filter(student => student.name.includes(query));
+        document.getElementById('file-name-display').innerText = `Fichier sélectionné : ${file.name}`;
+        statusDiv.innerHTML = "⏳ Analyse et extraction du PDF en cours...";
+        outputDiv.innerHTML = "";
 
-        if (filtered.length > 0) {
-            filtered.slice(0, 50).forEach(student => { // Limite visuelle à 50 suggestions maximum
-                const div = document.createElement('div');
-                div.textContent = `${student.name} (${student.class})`;
-                div.addEventListener('click', function() {
-                    displayStudent(student);
-                });
-                suggestionsList.appendChild(div);
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const typedarray = new Uint8Array(e.target.result);
+            
+            pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+                let maxPages = pdf.numPages;
+                let countPromises = [];
+                
+                for (let j = 1; j <= maxPages; j++) {
+                    let page = pdf.getPage(j);
+                    countPromises.push(page.then(function(page) {
+                        return page.getTextContent().then(function(text) {
+                            return text.items.map(function(s) { return s.str; }).join(' ');
+                        });
+                    }));
+                }
+                
+                return Promise.all(countPromises);
+            }).then(function(pageTexts) {
+                // Tout le texte du PDF réuni
+                let pleinTexte = pageTexts.join('\n');
+                ExtraireDonnees(pleinTexte);
+            }).catch(function(err) {
+                statusDiv.innerHTML = "❌ Erreur lors de la lecture du PDF : " + err.message;
             });
-            suggestionsList.style.display = 'block';
-        } else {
-            suggestionsList.style.display = 'none';
-        }
-    });
-
-    // Affichage final de la fiche de l'élève
-    function displayStudent(student) {
-        searchInput.value = student.name;
-        suggestionsList.style.display = 'none';
-
-        resName.textContent = student.name;
-        resClass.textContent = student.class;
-        
-        if (student.badge) {
-            resBadge.textContent = student.badge;
-            resBadge.className = "badge-number";
-        } else {
-            resBadge.textContent = "Aucun badge (Élève Externe)";
-            resBadge.className = "no-badge";
-        }
-
-        resultBox.style.display = 'block';
+        };
+        reader.readAsArrayBuffer(file);
     }
 
-    // Fermeture automatique de la liste déroulante
-    document.addEventListener('click', function(e) {
-        if (e.target !== searchInput) {
-            suggestionsList.style.display = 'none';
+    // Fonction d'analyse textuelle (Regex)
+    function ExtraireDonnees(texte) {
+        const lignes = texte.split(/\s{2,}/); // Coupe le texte par blocs d'espaces ou retours à la ligne
+        let elevesParClasse = {};
+        let classeActuelle = "Inconnue";
+
+        // Regex pour identifier un élève : NOM PRENOM Classe [Badge] Type
+        // Exemple : ABDELLAQUI MOHAMED 3A ÉLÈVE EXTERNE
+        const regexEleve = /([A-Z\s\-]{3,})\s+([A-Z][a-z\-]+(?:\s+[A-Z][a-z\-]+)*)\s+(\d[A-F]\s?)\s*(\d+)?\s*(ÉLÈVE\s+[A-Z]+)/g;
+        
+        let match;
+        // On cherche toutes les correspondances dans le texte complet
+        while ((match = regexEleve.exec(texte)) !== null) {
+            let nom = match[1].trim();
+            let prenom = match[2].trim();
+            let classeLigne = match[3].trim().replace(/\s/g, '');
+            let badge = match[4] ? match[4].trim() : "*(Non renseigné)*";
+            let type = match[5].trim();
+
+            if (!elevesParClasse[classeLigne]) {
+                elevesParClasse[classeLigne] = [];
+            }
+
+            elevesParClasse[classeLigne].push({
+                nom: nom,
+                prenom: prenom,
+                badge: badge,
+                type: type
+            });
         }
-    });
+
+        AfficherResultats(elevesParClasse);
+    }
+
+    // Fonction d'affichage et génération du bouton copier
+    function AfficherResultats(elevesParClasse) {
+        const classesTrouvees = Object.keys(elevesParClasse).sort();
+
+        if (classesTrouvees.length === 0) {
+            statusDiv.innerHTML = "⚠️ Aucun élève détecté. Vérifiez que le PDF correspond bien au format attendu.";
+            return;
+        }
+
+        statusDiv.innerHTML = `✅ Analyse terminée ! ${classesTrouvees.length} classe(s) détectée(s).`;
+
+        classesTrouvees.forEach(classe => {
+            const listeEleves = elevesParClasse[classe];
+            
+            const block = document.createElement('div');
+            block.className = 'classe-block';
+
+            // Entête du bloc de classe
+            const header = document.createElement('div');
+            header.className = 'classe-header';
+            
+            const title = document.createElement('h3');
+            title.className = 'classe-title';
+            title.innerText = `Classe : ${classe} (${listeEleves.length} élèves)`;
+            
+            const btn = document.createElement('button');
+            btn.className = 'btn-copy';
+            btn.innerText = 'Copier la classe';
+            
+            header.appendChild(title);
+            header.appendChild(btn);
+            block.appendChild(header);
+
+            // Liste des élèves
+            const ul = document.createElement('ul');
+            ul.className = 'eleve-liste';
+            
+            let texteACopier = "";
+
+            listeEleves.forEach(eleve => {
+                const ligneFormatee = `* **${eleve.nom} ${eleve.prenom}** | Classe : ${classe} | Badge : **${eleve.badge}** | Type : ${eleve.type}`;
+                texteACopier += ligneFormatee + "\n";
+
+                const li = document.createElement('li');
+                li.className = 'eleve-item';
+                li.innerText = ligneFormatee;
+                ul.appendChild(li);
+            });
+
+            block.appendChild(ul);
+            outputDiv.appendChild(block);
+
+            // Action du bouton copier
+            btn.addEventListener('click', () => {
+                navigator.clipboard.writeText(texteACopier).then(() => {
+                    btn.innerText = 'Copié ! ✓';
+                    btn.style.backgroundColor = '#2f855a';
+                    setTimeout(() => {
+                        btn.innerText = 'Copier la classe';
+                        btn.style.backgroundColor = 'var(--primary)';
+                    }, 2000);
+                });
+            });
+        });
+    }
 </script>
 
 </body>
