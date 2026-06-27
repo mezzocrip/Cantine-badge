@@ -121,6 +121,7 @@
             border-bottom: 1px solid #edf2f7;
             font-family: monospace;
             font-size: 14px;
+            white-space: pre-wrap;
         }
 
         .eleve-item:last-child {
@@ -133,7 +134,7 @@
 <div class="container">
     <header>
         <h1>📋 Extracteur de Listes d'Élèves</h1>
-        <p>Glisse n'importe quel PDF de classe pour extraire instantanément les données au format requis.</p>
+        <p>Glisse n'importe quel PDF pour en extraire toutes les lignes de données proprement.</p>
     </header>
 
     <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
@@ -179,7 +180,7 @@
         }
 
         document.getElementById('file-name-display').innerText = `Fichier sélectionné : ${file.name}`;
-        statusDiv.innerHTML = "⏳ Analyse et extraction du PDF en cours...";
+        statusDiv.innerHTML = "⏳ Lecture intégrale des lignes en cours...";
         outputDiv.innerHTML = "";
 
         const reader = new FileReader();
@@ -192,18 +193,35 @@
                 
                 for (let j = 1; j <= maxPages; j++) {
                     let page = pdf.getPage(j);
-                    countPromises.push(page.then(function(page) {
-                        return page.getTextContent().then(function(text) {
-                            // On extrait chaque élément de texte de la page
-                            return text.items.map(function(s) { return s.str; }).join(' \n ');
+                    countPromises.push(page.then(function(p) {
+                        return p.getTextContent().then(function(text) {
+                            // On extrait les morceaux de texte ligne par ligne
+                            let lastY = -1;
+                            let lignesPage = [];
+                            let ligneActuelle = "";
+
+                            // Regrouper les éléments par ligne physique (axe Y sur la page)
+                            text.items.forEach(function(item) {
+                                if (lastY !== item.transform[5] && ligneActuelle.trim() !== "") {
+                                    lignesPage.push(ligneActuelle.trim());
+                                    ligneActuelle = "";
+                                }
+                                ligneActuelle += " " + item.str;
+                                lastY = item.transform[5];
+                            });
+                            if (ligneActuelle.trim() !== "") {
+                                lignesPage.push(ligneActuelle.trim());
+                            }
+                            return lignesPage;
                         });
                     }));
                 }
                 
                 return Promise.all(countPromises);
-            }).then(function(pageTexts) {
-                let pleinTexte = pageTexts.join('\n');
-                ExtraireDonnees(pleinTexte);
+            }).then(function(pagesLignes) {
+                // Fusionne toutes les lignes du PDF
+                let toutesLesLignes = [].concat(...pagesLignes);
+                TrierEtAfficher(toutesLesLignes);
             }).catch(function(err) {
                 statusDiv.innerHTML = "❌ Erreur lors de la lecture du PDF : " + err.message;
             });
@@ -211,55 +229,46 @@
         reader.readAsArrayBuffer(file);
     }
 
-    function ExtraireDonnees(texte) {
-        // Découpage ligne par ligne pour éviter les mélanges
-        const lignes = texte.split('\n');
+    function TrierEtAfficher(lignes) {
         let elevesParClasse = {};
+        let classeActuelle = "Autres Données";
 
-        // Regex ultra-flexible : Cherche "NOM Prénom Classe" (avec ou sans badge / type ensuite)
-        const regexEleve = /([A-Z\s\-]{3,})\s+([A-Z][a-z\-]+(?:\s+[A-Z][a-z\-]+)*)\s+(\d[A-F]\s?)/;
-        
-        // Regex secondaire pour attraper le Badge et le Type s'ils traînent sur la ligne
-        const regexBadge = /(\d{3,4})/;
-        const regexType = /(ÉLÈVE\s+[A-Z]+|EXTERNE|DP)/i;
+        // Détecteur de classe simple (ex: "3A", "3 B", "4C", "UP2A")
+        const regexDetecterClasse = /\b([3456]\s*[A-F]|UP2A)\b/;
 
         lignes.forEach(ligne => {
-            let ligneNettoyee = ligne.trim();
-            let match = regexEleve.exec(ligneNettoyee);
+            let l = ligne.trim();
+            
+            // On ignore les lignes de titres ou inutiles
+            if (!l || l.includes("COLLEGE JULES FERRY") || l.includes("Imprimé le") || l.includes("Page ") || l.includes("Type de compte")) {
+                return;
+            }
 
-            if (match) {
-                let nom = match[1].trim();
-                let prenom = match[2].trim();
-                let classeLigne = match[3].trim().replace(/\s/g, '');
-                
-                // On essaie de deviner le badge et le type s'ils sont présents dans le reste de la ligne
-                let resteDeLaLigne = ligneNettoyee.replace(match[0], '');
-                let matchBadge = regexBadge.exec(resteDeLaLigne);
-                let matchType = regexType.exec(resteDeLaLigne);
+            // Si la ligne contient une classe isolée ou indique un total, on essaie de mettre à jour la classe cible
+            let matchClasse = regexDetecterClasse.exec(l);
+            if (matchClasse && (l.includes("Classe") || l.includes("Total"))) {
+                classeActuelle = matchClasse[1].replace(/\s/g, '');
+            } else if (matchClasse) {
+                // Si la ligne contient une classe au milieu des données, on prend celle-ci
+                classeActuelle = matchClasse[1].replace(/\s/g, '');
+            }
 
-                let badge = matchBadge ? matchBadge[1].trim() : "*(Non renseigné)*";
-                let type = matchType ? matchType[1].toUpperCase().trim() : "ÉLÈVE";
+            if (!elevesParClasse[classeActuelle]) {
+                elevesParClasse[classeActuelle] = [];
+            }
 
-                // Normalisation rapide du type
-                if (type === "EXTERNE") type = "ÉLÈVE EXTERNE";
-                if (type === "DP") type = "ÉLÈVE DP";
-
-                if (!elevesParClasse[classeLigne]) {
-                    elevesParClasse[classeLigne] = [];
-                }
-
-                // Évite les doublons sur une même ligne
-                let existeDeja = elevesParClasse[classeLigne].some(e => e.nom === nom && e.prenom === prenom);
-                if (!existeDeja) {
-                    elevesParClasse[classeLigne].push({
-                        nom: nom,
-                        prenom: prenom,
-                        badge: badge,
-                        type: type
-                    });
-                }
+            // On ajoute la ligne brute nettoyée
+            if (!l.startsWith("Nom") && !l.startsWith("Total") && !l.startsWith("Classe:")) {
+                elevesParClasse[classeActuelle].push(l);
             }
         });
+
+        // Nettoyage final des blocs vides
+        for (let cl in elevesParClasse) {
+            if (elevesParClasse[cl].length === 0 || cl === "Autres Données") {
+                delete elevesParClasse[cl];
+            }
+        }
 
         AfficherResultats(elevesParClasse);
     }
@@ -268,14 +277,14 @@
         const classesTrouvees = Object.keys(elevesParClasse).sort();
 
         if (classesTrouvees.length === 0) {
-            statusDiv.innerHTML = "⚠️ Aucun élève détecté. Vérifiez que le PDF contient bien des textes au format standard (NOM Prenom Classe).";
+            statusDiv.innerHTML = "⚠️ Aucune donnée de ligne exploitable n'a été trouvée.";
             return;
         }
 
-        statusDiv.innerHTML = `✅ Analyse terminée ! ${classesTrouvees.length} classe(s) détectée(s).`;
+        statusDiv.innerHTML = `✅ Extraction ligne par ligne réussie !`;
 
         classesTrouvees.forEach(classe => {
-            const listeEleves = elevesParClasse[classe];
+            const listeLignes = elevesParClasse[classe];
             
             const block = document.createElement('div');
             block.className = 'classe-block';
@@ -285,11 +294,11 @@
             
             const title = document.createElement('h3');
             title.className = 'classe-title';
-            title.innerText = `Classe : ${classe} (${listeEleves.length} élèves)`;
+            title.innerText = `Groupe / Classe : ${classe}`;
             
             const btn = document.createElement('button');
             btn.className = 'btn-copy';
-            btn.innerText = 'Copier la classe';
+            btn.innerText = 'Copier les lignes';
             
             header.appendChild(title);
             header.appendChild(btn);
@@ -300,8 +309,9 @@
             
             let texteACopier = "";
 
-            listeEleves.forEach(eleve => {
-                const ligneFormatee = `* **${eleve.nom} ${eleve.prenom}** | Classe : ${classe} | Badge : **${eleve.badge}** | Type : ${eleve.type}`;
+            listeLignes.forEach(ligne => {
+                // Formatage propre : chaque ligne est conservée exactement comme dans le PDF original
+                const ligneFormatee = `* ${ligne}`;
                 texteACopier += ligneFormatee + "\n";
 
                 const li = document.createElement('li');
@@ -318,7 +328,7 @@
                     btn.innerText = 'Copié ! ✓';
                     btn.style.backgroundColor = '#2f855a';
                     setTimeout(() => {
-                        btn.innerText = 'Copier la classe';
+                        btn.innerText = 'Copier les lignes';
                         btn.style.backgroundColor = 'var(--primary)';
                     }, 2000);
                 });
