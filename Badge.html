@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Automatique de Badges - Collège Jules Ferry</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .search-container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            width: 450px;
+            position: relative;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+            font-size: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .file-section {
+            background-color: #f9f9f9;
+            border: 2px dashed #bbb;
+            padding: 15px;
+            text-align: center;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .status {
+            font-size: 13px;
+            margin-top: 8px;
+            color: #666;
+            font-weight: bold;
+        }
+        label {
+            font-size: 14px;
+            color: #666;
+            font-weight: 600;
+        }
+        .input-wrapper {
+            position: relative;
+            margin-top: 5px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            box-sizing: border-box;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        input[type="text"]:focus {
+            border-color: #4a90e2;
+        }
+        input[type="text"]:disabled {
+            background-color: #eee;
+            cursor: not-allowed;
+        }
+        .suggestions {
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 6px 6px;
+            max-height: 180px;
+            overflow-y: auto;
+            position: absolute;
+            width: 100%;
+            background: #fff;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+        }
+        .suggestions div {
+            padding: 12px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+        .suggestions div:hover {
+            background-color: #f0f4f8;
+            color: #4a90e2;
+        }
+        .result-box {
+            margin-top: 25px;
+            padding: 15px;
+            background-color: #eef5fc;
+            border-left: 5px solid #4a90e2;
+            border-radius: 4px;
+            display: none;
+        }
+        .result-box p {
+            margin: 5px 0;
+            color: #333;
+            font-size: 15px;
+        }
+        .badge-number {
+            font-weight: bold;
+            font-size: 20px;
+            color: #d9534f;
+            background-color: #fde8e8;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .no-badge {
+            font-style: italic;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+
+<div class="search-container">
+    <h2>Recherche Globale de Badges</h2>
+    
+    <div class="file-section">
+        <label for="pdf-file" style="cursor: pointer; color: #4a90e2;">📁 Charger le fichier Cantine 05:2026.pdf</label>
+        <input type="file" id="pdf-file" accept=".pdf" style="display: none;"><br>
+        <div id="import-status" class="status">Statut : En attente du fichier PDF...</div>
+    </div>
+
+    <label for="student-search">Nom de l'élève (Toutes classes) :</label>
+    <div class="input-wrapper">
+        <input type="text" id="student-search" placeholder="Importez d'abord le PDF..." disabled autocomplete="off">
+        <div id="suggestions-list" class="suggestions" style="display: none;"></div>
+    </div>
+
+    <div id="result" class="result-box">
+        <p><strong>Élève :</strong> <span id="res-name"></span></p>
+        <p><strong>Classe :</strong> <span id="res-class"></span></p>
+        <p><strong>N° de Badge :</strong> <span id="res-badge" class="badge-number"></span></p>
+    </div>
+</div>
+
+<script>
+    // Configuration de la bibliothèque PDF.js
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    let globalStudentsData = [];
+
+    const fileInput = document.getElementById('pdf-file');
+    const importStatus = document.getElementById('import-status');
+    const searchInput = document.getElementById('student-search');
+    const suggestionsList = document.getElementById('suggestions-list');
+    const resultBox = document.getElementById('result');
+    const resName = document.getElementById('res-name');
+    const resClass = document.getElementById('res-class');
+    const resBadge = document.getElementById('res-badge');
+
+    // Détection de l'importation du fichier
+    fileInput.addEventListener('change', async function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        importStatus.textContent = "⏳ Lecture et extraction des 24 pages en cours...";
+        importStatus.style.color = "#4a90e2";
+        globalStudentsData = []; // Réinitialisation
+
+        const fileReader = new FileReader();
+        fileReader.onload = async function() {
+            try {
+                const typedarray = new Uint8Array(this.result);
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                
+                // Parcourt les 24 pages du PDF
+                for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                    const page = await pdf.getPage(pageNum);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(" ");
+                    
+                    // Analyse le texte ligne par ligne pour extraire les données
+                    analyzePageText(pageText);
+                }
+
+                if (globalStudentsData.length > 0) {
+                    importStatus.textContent = `✅ ${globalStudentsData.length} élèves chargés avec succès !`;
+                    importStatus.style.color = "#2ecc71";
+                    searchInput.disabled = false;
+                    searchInput.placeholder = "Tapez un nom pour chercher...";
+                } else {
+                    importStatus.textContent = "❌ Aucune donnée trouvée. Vérifiez le fichier.";
+                    importStatus.style.color = "#e74c3c";
+                }
+
+            } catch (error) {
+                console.error(error);
+                importStatus.textContent = "❌ Erreur lors de la lecture du fichier PDF.";
+                importStatus.style.color = "#e74c3c";
+            }
+        };
+        fileReader.readAsArrayBuffer(file);
+    });
+
+    // Fonction intelligente d'extraction de données textuelles
+    function analyzePageText(text) {
+        // Recherche des motifs de lignes de type CSV / Tableau présents dans le document
+        // Capture le Nom de l'élève, le badge éventuel, et la classe (ex: 3A, 4B, 6F)
+        const regexLine = /"([^"\n]+)"\s*,\s*"?([0-9]*)"?\s*,\s*"([3456] ?[A-F]|UP2A)/gi;
+        let match;
+        
+        while ((match = regexLine.exec(text)) !== null) {
+            let name = match[1].replace(/\n/g, ' ').trim().toUpperCase();
+            let badge = match[2].trim() || null;
+            let className = match[3].replace(/\s/g, '').toUpperCase();
+
+            // Éviter les lignes d'en-tête de colonnes
+            if (name !== "NOM" && !name.includes("TOTAL") && !name.includes("COMPTES POUR LA CLASSE")) {
+                globalStudentsData.push({
+                    name: name,
+                    badge: badge,
+                    class: className
+                });
+            }
+        }
+    }
+
+    // Gestion active de la barre de recherche
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toUpperCase().trim();
+        suggestionsList.innerHTML = '';
+        
+        if (query.length === 0) {
+            suggestionsList.style.display = 'none';
+            return;
+        }
+
+        // Filtre instantané sur l'intégralité des élèves extraits
+        const filtered = globalStudentsData.filter(student => student.name.includes(query));
+
+        if (filtered.length > 0) {
+            filtered.slice(0, 50).forEach(student => { // Limite visuelle à 50 suggestions maximum
+                const div = document.createElement('div');
+                div.textContent = `${student.name} (${student.class})`;
+                div.addEventListener('click', function() {
+                    displayStudent(student);
+                });
+                suggestionsList.appendChild(div);
+            });
+            suggestionsList.style.display = 'block';
+        } else {
+            suggestionsList.style.display = 'none';
+        }
+    });
+
+    // Affichage final de la fiche de l'élève
+    function displayStudent(student) {
+        searchInput.value = student.name;
+        suggestionsList.style.display = 'none';
+
+        resName.textContent = student.name;
+        resClass.textContent = student.class;
+        
+        if (student.badge) {
+            resBadge.textContent = student.badge;
+            resBadge.className = "badge-number";
+        } else {
+            resBadge.textContent = "Aucun badge (Élève Externe)";
+            resBadge.className = "no-badge";
+        }
+
+        resultBox.style.display = 'block';
+    }
+
+    // Fermeture automatique de la liste déroulante
+    document.addEventListener('click', function(e) {
+        if (e.target !== searchInput) {
+            suggestionsList.style.display = 'none';
+        }
+    });
+</script>
+
+</body>
+</html>
