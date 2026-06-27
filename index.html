@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extracteur de Classes - Collège Jules Ferry</title>
+    <title>Extracteur Universel de Lignes - Collège Jules Ferry</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
     <style>
         :root {
             --primary: #2b6cb0;
@@ -133,15 +136,15 @@
 
 <div class="container">
     <header>
-        <h1>📋 Extracteur de Listes d'Élèves</h1>
-        <p>Glisse n'importe quel PDF pour en extraire toutes les lignes de données proprement.</p>
+        <h1>📋 Extracteur Universel de Données</h1>
+        <p>Glissez n'importe quel fichier (PDF, Excel, Word, CSV, Texte) pour en extraire les lignes.</p>
     </header>
 
     <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
         <div class="upload-icon">📂</div>
-        <p><strong>Cliquez pour choisir un PDF</strong> ou glissez-déposez le fichier ici</p>
+        <p><strong>Cliquez pour choisir un fichier</strong> ou glissez-déposez le ici</p>
         <span id="file-name-display" style="color: var(--primary); font-weight: bold;"></span>
-        <input type="file" id="file-input" accept=".pdf">
+        <input type="file" id="file-input" accept=".pdf,.xlsx,.xls,.docx,.txt,.csv">
     </div>
 
     <div id="status"></div>
@@ -165,126 +168,147 @@
 
     dropZone.addEventListener('drop', (e) => {
         const dt = e.dataTransfer;
-        const files = dt.files;
-        if (files.length) TraiterFichier(files[0]);
+        if (dt.files.length) AiguillerFichier(dt.files[0]);
     });
 
     fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length) TraiterFichier(e.target.files[0]);
+        if (e.target.files.length) AiguillerFichier(e.target.files[0]);
     });
 
-    function TraiterFichier(file) {
-        if (file.type !== "application/pdf") {
-            statusDiv.innerHTML = "❌ Erreur : Veuillez sélectionner un fichier au format PDF.";
-            return;
-        }
-
-        document.getElementById('file-name-display').innerText = `Fichier sélectionné : ${file.name}`;
-        statusDiv.innerHTML = "⏳ Lecture intégrale des lignes en cours...";
+    // Étape 1 : Détecter l'extension du fichier et choisir le bon lecteur
+    function AiguillerFichier(file) {
+        const nomFichier = file.name;
+        const extension = nomFichier.substring(nomFichier.lastIndexOf('.')).toLowerCase();
+        
+        document.getElementById('file-name-display').innerText = `Fichier sélectionné : ${nomFichier}`;
+        statusDiv.innerHTML = `⏳ Lecture du fichier ${extension.toUpperCase()} en cours...`;
         outputDiv.innerHTML = "";
 
         const reader = new FileReader();
-        reader.onload = function(e) {
-            const typedarray = new Uint8Array(e.target.result);
-            
-            pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
-                let maxPages = pdf.numPages;
-                let countPromises = [];
-                
-                for (let j = 1; j <= maxPages; j++) {
-                    let page = pdf.getPage(j);
-                    countPromises.push(page.then(function(p) {
-                        return p.getTextContent().then(function(text) {
-                            // On extrait les morceaux de texte ligne par ligne
-                            let lastY = -1;
-                            let lignesPage = [];
-                            let ligneActuelle = "";
 
-                            // Regrouper les éléments par ligne physique (axe Y sur la page)
-                            text.items.forEach(function(item) {
-                                if (lastY !== item.transform[5] && ligneActuelle.trim() !== "") {
-                                    lignesPage.push(ligneActuelle.trim());
-                                    ligneActuelle = "";
-                                }
-                                ligneActuelle += " " + item.str;
-                                lastY = item.transform[5];
-                            });
-                            if (ligneActuelle.trim() !== "") {
-                                lignesPage.push(ligneActuelle.trim());
-                            }
-                            return lignesPage;
-                        });
-                    }));
-                }
-                
-                return Promise.all(countPromises);
-            }).then(function(pagesLignes) {
-                // Fusionne toutes les lignes du PDF
-                let toutesLesLignes = [].concat(...pagesLignes);
-                TrierEtAfficher(toutesLesLignes);
-            }).catch(function(err) {
-                statusDiv.innerHTML = "❌ Erreur lors de la lecture du PDF : " + err.message;
-            });
-        };
-        reader.readAsArrayBuffer(file);
+        if (extension === '.pdf') {
+            reader.onload = (e) => LirePDF(new Uint8Array(e.target.result));
+            reader.readAsArrayBuffer(file);
+        } 
+        else if (extension === '.xlsx' || extension === '.xls') {
+            reader.onload = (e) => LireExcel(new Uint8Array(e.target.result));
+            reader.readAsArrayBuffer(file);
+        } 
+        else if (extension === '.docx') {
+            reader.onload = (e) => LireWord(e.target.result);
+            reader.readAsArrayBuffer(file);
+        } 
+        else if (extension === '.txt' || extension === '.csv') {
+            reader.onload = (e) => TraiterLignesBrutes(e.target.result.split('\n'));
+            reader.readAsText(file);
+        } 
+        else {
+            statusDiv.innerHTML = "❌ Format non supporté. Utilisez un PDF, Excel (.xlsx), Word (.docx) ou du Texte (.txt, .csv).";
+        }
     }
 
-    function TrierEtAfficher(lignes) {
-        let elevesParClasse = {};
-        let classeActuelle = "Autres Données";
+    // Convertisseur PDF -> Lignes
+    function LirePDF(data) {
+        pdfjsLib.getDocument(data).promise.then(function(pdf) {
+            let maxPages = pdf.numPages;
+            let countPromises = [];
+            for (let j = 1; j <= maxPages; j++) {
+                countPromises.push(pdf.getPage(j).then(p => p.getTextContent().then(function(text) {
+                    let lastY = -1, lignesPage = [], ligneActuelle = "";
+                    text.items.forEach(function(item) {
+                        if (lastY !== item.transform[5] && ligneActuelle.trim() !== "") {
+                            lignesPage.push(ligneActuelle.trim());
+                            ligneActuelle = "";
+                        }
+                        ligneActuelle += " " + item.str;
+                        lastY = item.transform[5];
+                    });
+                    if (ligneActuelle.trim() !== "") lignesPage.push(ligneActuelle.trim());
+                    return lignesPage;
+                })));
+            }
+            return Promise.all(countPromises);
+        }).then(function(pagesLignes) {
+            TraiterLignesBrutes([].concat(...pagesLignes));
+        }).catch(err => statusDiv.innerHTML = "❌ Erreur PDF : " + err.message);
+    }
 
-        // Détecteur de classe simple (ex: "3A", "3 B", "4C", "UP2A")
+    // Convertisseur Excel -> Lignes
+    function LireExcel(data) {
+        try {
+            const workbook = XLSX.read(data, {type: 'array'});
+            let toutesLesLignes = [];
+            
+            // On parcourt tous les onglets du fichier Excel
+            workbook.SheetNames.forEach(sheetName => {
+                const sheet = workbook.Sheets[sheetName];
+                // Transforme l'onglet en tableau de lignes de texte
+                const lignesJSON = XLSX.utils.sheet_to_json(sheet, {header: 1});
+                lignesJSON.forEach(ligne => {
+                    let ligneTexte = ligne.filter(cellule => cellule !== null && cellule !== undefined).join(" ");
+                    if (ligneTexte.trim() !== "") toutesLesLignes.push(ligneTexte);
+                });
+            });
+            TraiterLignesBrutes(toutesLesLignes);
+        } catch(err) {
+            statusDiv.innerHTML = "❌ Erreur Excel : " + err.message;
+        }
+    }
+
+    // Convertisseur Word -> Lignes
+    function LireWord(data) {
+        mammoth.extractRawText({arrayBuffer: data})
+            .then(function(result){
+                let lignes = result.value.split('\n');
+                TraiterLignesBrutes(lignes);
+            })
+            .catch(err => statusDiv.innerHTML = "❌ Erreur Word : " + err.message);
+    }
+
+    // Étape 2 : Ranger et Classer les lignes textuelles obtenues
+    function TraiterLignesBrutes(lignes) {
+        let elevesParClasse = {};
+        let classeActuelle = "Données Extraites";
+
         const regexDetecterClasse = /\b([3456]\s*[A-F]|UP2A)\b/;
 
         lignes.forEach(ligne => {
             let l = ligne.trim();
-            
-            // On ignore les lignes de titres ou inutiles
-            if (!l || l.includes("COLLEGE JULES FERRY") || l.includes("Imprimé le") || l.includes("Page ") || l.includes("Type de compte")) {
-                return;
-            }
+            if (!l || l.includes("COLLEGE JULES FERRY") || l.includes("Imprimé le") || l.includes("Page ") || l.includes("Type de compte")) return;
 
-            // Si la ligne contient une classe isolée ou indique un total, on essaie de mettre à jour la classe cible
             let matchClasse = regexDetecterClasse.exec(l);
-            if (matchClasse && (l.includes("Classe") || l.includes("Total"))) {
-                classeActuelle = matchClasse[1].replace(/\s/g, '');
-            } else if (matchClasse) {
-                // Si la ligne contient une classe au milieu des données, on prend celle-ci
+            if (matchClasse) {
                 classeActuelle = matchClasse[1].replace(/\s/g, '');
             }
 
-            if (!elevesParClasse[classeActuelle]) {
-                elevesParClasse[classeActuelle] = [];
-            }
+            if (!elevesParClasse[classeActuelle]) elevesParClasse[classeActuelle] = [];
 
-            // On ajoute la ligne brute nettoyée
             if (!l.startsWith("Nom") && !l.startsWith("Total") && !l.startsWith("Classe:")) {
                 elevesParClasse[classeActuelle].push(l);
             }
         });
 
-        // Nettoyage final des blocs vides
+        // Nettoyage des groupes vides
         for (let cl in elevesParClasse) {
-            if (elevesParClasse[cl].length === 0 || cl === "Autres Données") {
-                delete elevesParClasse[cl];
-            }
+            if (elevesParClasse[cl].length === 0) delete elevesParClasse[cl];
         }
 
         AfficherResultats(elevesParClasse);
     }
 
+    // Étape 3 : Affichage à l'écran avec bouton Copier
     function AfficherResultats(elevesParClasse) {
-        const classesTrouvees = Object.keys(elevesParClasse).sort();
+        const groupesTrouves = Object.keys(elevesParClasse).sort();
 
-        if (classesTrouvees.length === 0) {
-            statusDiv.innerHTML = "⚠️ Aucune donnée de ligne exploitable n'a été trouvée.";
+        if (groupesTrouves.length === 0) {
+            statusDiv.innerHTML = "⚠️ Aucune ligne textuelle exploitable n'a été trouvée.";
             return;
         }
 
-        statusDiv.innerHTML = `✅ Extraction ligne par ligne réussie !`;
+        statusDiv.innerHTML = `✅ Traitement réussi ! Données prêtes à copier.`;
 
-        classesTrouvees.forEach(classe => {
-            const listeLignes = elevesParClasse[classe];
+        groupesTrouves.forEach(groupe => {
+            const listeLignes = elevesParClasse[groupe];
             
             const block = document.createElement('div');
             block.className = 'classe-block';
@@ -294,7 +318,7 @@
             
             const title = document.createElement('h3');
             title.className = 'classe-title';
-            title.innerText = `Groupe / Classe : ${classe}`;
+            title.innerText = groupe.match(/^[3456][A-F]$/) ? `Classe : ${groupe}` : `${groupe}`;
             
             const btn = document.createElement('button');
             btn.className = 'btn-copy';
@@ -310,7 +334,6 @@
             let texteACopier = "";
 
             listeLignes.forEach(ligne => {
-                // Formatage propre : chaque ligne est conservée exactement comme dans le PDF original
                 const ligneFormatee = `* ${ligne}`;
                 texteACopier += ligneFormatee + "\n";
 
