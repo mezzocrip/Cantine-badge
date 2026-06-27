@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Extracteur de Classes - Collège Jules Ferry</title>
-    <!-- Inclusion de PDF.js pour lire n'importe quel fichier PDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <style>
         :root {
@@ -40,7 +39,6 @@
             margin-bottom: 5px;
         }
 
-        /* Zone de dépôt du fichier */
         .upload-zone {
             background: var(--card-bg);
             border: 2px dashed #cbd5e0;
@@ -66,7 +64,6 @@
             margin-bottom: 10px;
         }
 
-        /* Status de chargement */
         #status {
             text-align: center;
             font-weight: bold;
@@ -74,7 +71,6 @@
             color: var(--primary);
         }
 
-        /* Affichage des classes */
         .classe-block {
             background: var(--card-bg);
             border: 1px solid var(--border);
@@ -140,7 +136,6 @@
         <p>Glisse n'importe quel PDF de classe pour extraire instantanément les données au format requis.</p>
     </header>
 
-    <!-- ZONE DE TELECHARGEMENT FLEXIBLE -->
     <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
         <div class="upload-icon">📂</div>
         <p><strong>Cliquez pour choisir un PDF</strong> ou glissez-déposez le fichier ici</p>
@@ -153,7 +148,6 @@
 </div>
 
 <script>
-    // Configuration de PDF.js
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
     const dropZone = document.getElementById('drop-zone');
@@ -161,7 +155,6 @@
     const statusDiv = document.getElementById('status');
     const outputDiv = document.getElementById('output');
 
-    // Gestion du Drag & Drop
     ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, (e) => { e.preventDefault(); dropZone.classList.add('dragover'); }, false);
     });
@@ -179,7 +172,6 @@
         if (e.target.files.length) TraiterFichier(e.target.files[0]);
     });
 
-    // Fonction principale de lecture du PDF
     function TraiterFichier(file) {
         if (file.type !== "application/pdf") {
             statusDiv.innerHTML = "❌ Erreur : Veuillez sélectionner un fichier au format PDF.";
@@ -202,14 +194,14 @@
                     let page = pdf.getPage(j);
                     countPromises.push(page.then(function(page) {
                         return page.getTextContent().then(function(text) {
-                            return text.items.map(function(s) { return s.str; }).join(' ');
+                            // On extrait chaque élément de texte de la page
+                            return text.items.map(function(s) { return s.str; }).join(' \n ');
                         });
                     }));
                 }
                 
                 return Promise.all(countPromises);
             }).then(function(pageTexts) {
-                // Tout le texte du PDF réuni
                 let pleinTexte = pageTexts.join('\n');
                 ExtraireDonnees(pleinTexte);
             }).catch(function(err) {
@@ -219,46 +211,64 @@
         reader.readAsArrayBuffer(file);
     }
 
-    // Fonction d'analyse textuelle (Regex)
     function ExtraireDonnees(texte) {
-        const lignes = texte.split(/\s{2,}/); // Coupe le texte par blocs d'espaces ou retours à la ligne
+        // Découpage ligne par ligne pour éviter les mélanges
+        const lignes = texte.split('\n');
         let elevesParClasse = {};
-        let classeActuelle = "Inconnue";
 
-        // Regex pour identifier un élève : NOM PRENOM Classe [Badge] Type
-        // Exemple : ABDELLAQUI MOHAMED 3A ÉLÈVE EXTERNE
-        const regexEleve = /([A-Z\s\-]{3,})\s+([A-Z][a-z\-]+(?:\s+[A-Z][a-z\-]+)*)\s+(\d[A-F]\s?)\s*(\d+)?\s*(ÉLÈVE\s+[A-Z]+)/g;
+        // Regex ultra-flexible : Cherche "NOM Prénom Classe" (avec ou sans badge / type ensuite)
+        const regexEleve = /([A-Z\s\-]{3,})\s+([A-Z][a-z\-]+(?:\s+[A-Z][a-z\-]+)*)\s+(\d[A-F]\s?)/;
         
-        let match;
-        // On cherche toutes les correspondances dans le texte complet
-        while ((match = regexEleve.exec(texte)) !== null) {
-            let nom = match[1].trim();
-            let prenom = match[2].trim();
-            let classeLigne = match[3].trim().replace(/\s/g, '');
-            let badge = match[4] ? match[4].trim() : "*(Non renseigné)*";
-            let type = match[5].trim();
+        // Regex secondaire pour attraper le Badge et le Type s'ils traînent sur la ligne
+        const regexBadge = /(\d{3,4})/;
+        const regexType = /(ÉLÈVE\s+[A-Z]+|EXTERNE|DP)/i;
 
-            if (!elevesParClasse[classeLigne]) {
-                elevesParClasse[classeLigne] = [];
+        lignes.forEach(ligne => {
+            let ligneNettoyee = ligne.trim();
+            let match = regexEleve.exec(ligneNettoyee);
+
+            if (match) {
+                let nom = match[1].trim();
+                let prenom = match[2].trim();
+                let classeLigne = match[3].trim().replace(/\s/g, '');
+                
+                // On essaie de deviner le badge et le type s'ils sont présents dans le reste de la ligne
+                let resteDeLaLigne = ligneNettoyee.replace(match[0], '');
+                let matchBadge = regexBadge.exec(resteDeLaLigne);
+                let matchType = regexType.exec(resteDeLaLigne);
+
+                let badge = matchBadge ? matchBadge[1].trim() : "*(Non renseigné)*";
+                let type = matchType ? matchType[1].toUpperCase().trim() : "ÉLÈVE";
+
+                // Normalisation rapide du type
+                if (type === "EXTERNE") type = "ÉLÈVE EXTERNE";
+                if (type === "DP") type = "ÉLÈVE DP";
+
+                if (!elevesParClasse[classeLigne]) {
+                    elevesParClasse[classeLigne] = [];
+                }
+
+                // Évite les doublons sur une même ligne
+                let existeDeja = elevesParClasse[classeLigne].some(e => e.nom === nom && e.prenom === prenom);
+                if (!existeDeja) {
+                    elevesParClasse[classeLigne].push({
+                        nom: nom,
+                        prenom: prenom,
+                        badge: badge,
+                        type: type
+                    });
+                }
             }
-
-            elevesParClasse[classeLigne].push({
-                nom: nom,
-                prenom: prenom,
-                badge: badge,
-                type: type
-            });
-        }
+        });
 
         AfficherResultats(elevesParClasse);
     }
 
-    // Fonction d'affichage et génération du bouton copier
     function AfficherResultats(elevesParClasse) {
         const classesTrouvees = Object.keys(elevesParClasse).sort();
 
         if (classesTrouvees.length === 0) {
-            statusDiv.innerHTML = "⚠️ Aucun élève détecté. Vérifiez que le PDF correspond bien au format attendu.";
+            statusDiv.innerHTML = "⚠️ Aucun élève détecté. Vérifiez que le PDF contient bien des textes au format standard (NOM Prenom Classe).";
             return;
         }
 
@@ -270,7 +280,6 @@
             const block = document.createElement('div');
             block.className = 'classe-block';
 
-            // Entête du bloc de classe
             const header = document.createElement('div');
             header.className = 'classe-header';
             
@@ -286,7 +295,6 @@
             header.appendChild(btn);
             block.appendChild(header);
 
-            // Liste des élèves
             const ul = document.createElement('ul');
             ul.className = 'eleve-liste';
             
@@ -305,7 +313,6 @@
             block.appendChild(ul);
             outputDiv.appendChild(block);
 
-            // Action du bouton copier
             btn.addEventListener('click', () => {
                 navigator.clipboard.writeText(texteACopier).then(() => {
                     btn.innerText = 'Copié ! ✓';
